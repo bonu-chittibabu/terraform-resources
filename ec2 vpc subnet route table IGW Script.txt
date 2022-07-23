@@ -1,0 +1,148 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.16"
+    }
+  }
+
+  required_version = ">= 1.2.0"
+}
+
+provider "aws" {
+  region  = "us-east-1"
+  profile = "default"
+}
+
+resource "aws_instance" "app_server" {
+  ami           = "ami-085284d24fe829cd0"
+  instance_type = "t2.micro"
+
+  tags = {
+    Name = "N-Virginia-Instance"
+  }
+}
+resource "aws_vpc" "N-Virginia-Vpc" {
+cidr_block = "10.21.0.0/16"
+enable_dns_support = "true"
+enable_dns_hostnames = "true"
+tags = {
+Name = "N-Virginia-Vpc"
+}
+}
+resource "aws_subnet" "N-Virginia-Vpc-subnet1" {
+vpc_id = aws_vpc.N-Virginia-Vpc.id
+cidr_block = "10.21.6.0/24"
+availability_zone = "us-east-1a"
+map_public_ip_on_launch = "true"
+tags = {
+Name = "N-Virginia-Vpc-subnet1"
+}
+}
+resource "aws_internet_gateway" "N-Virginia-IGW" {
+vpc_id = aws_vpc.N-Virginia-Vpc.id
+tags = {
+Name = "N-Virginia-IGW"
+}
+}
+
+resource "aws_route_table" "RT-N-Virginia" {
+vpc_id = aws_vpc.N-Virginia-Vpc.id
+route {
+cidr_block = "0.0.0.0/0"
+gateway_id = aws_internet_gateway.N-Virginia-IGW.id
+}
+tags = {
+Name = "RT-N-Virginia"
+}
+}
+resource "aws_route_table_association" "rt-subnet1" {
+subnet_id = aws_subnet.N-Virginia-Vpc-subnet1.id
+route_table_id = aws_route_table.RT-N-Virginia.id
+}
+
+
+
+
+
+
+resource "aws_subnet" "N-Virginia-Vpc-subnet2" {
+vpc_id = aws_vpc.N-Virginia-Vpc.id
+cidr_block = "10.21.8.0/24"
+availability_zone = "us-east-1a"
+map_public_ip_on_launch = "true"
+tags = {
+Name = "N-Virginia-Vpc-subnet2"
+}
+}
+resource "aws_eip" "eipnat" {
+vpc = true
+}
+resource "aws_nat_gateway" "N-Virginia-NGW" {
+allocation_id = aws_eip.eipnat.id
+subnet_id = aws_subnet.terravpc-subnet1.id
+depends_on = [aws_internet_gateway.N-Virginia-IGW]
+}
+resource "aws_route_table" "RT-N-Virginia-private" {
+vpc_id = aws_vpc.N-Virginia-Vpc.id
+route {
+cidr_block = "0.0.0.0/0"
+gateway_id = aws_nat_gateway.N-Virginia-NGW.id
+}
+tags = {
+Name = "RT-N-Virginia-private"
+}
+}
+resource "aws_route_table_association" "rtpri_subnet2" {
+subnet_id = aws_subnet.N-Virginia-Vpc-subnet2.id
+route_table_id = aws_route_table.RT-N-Virginia-private.id
+}
+
+
+
+
+resource "aws_security_group" "sg-N-Virginia-TVPC" {
+vpc_id = aws_vpc.N-Virginia-Vpc.id
+egress {
+from_port = 0
+to_port = 0
+protocol = -1
+cidr_blocks = ["0.0.0.0/0"]
+}
+ingress {
+from_port = 22
+to_port = 22
+protocol = "tcp"
+cidr_blocks = ["0.0.0.0/0"]
+}
+ingress {
+from_port = 80
+to_port = 80
+protocol = "tcp"
+cidr_blocks = ["0.0.0.0/0"]
+}
+tags = {
+Name = "sg-N-Virginia-TVPC"
+}
+}
+resource "tls_private_key" "NV2506key" {
+algorithm = "RSA"
+}
+resource "aws_key_pair" "sshaccesskey" {
+key_name = "NV2506key"
+public_key = "${tls_private_key.NV2506key.public_key_openssh}"
+depends_on = [
+tls_private_key.NV2506key
+]
+
+
+
+}
+resource "local_file" "key" {
+content = "${tls_private_key.NV2506key.private_key_pem}"
+filename = "NV2506key.pem"
+file_permission = "0400"
+depends_on = [
+tls_private_key.NV2506key
+]
+}
